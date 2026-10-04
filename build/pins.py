@@ -2,14 +2,17 @@
 """Reads pins.json for the build scripts, so no shell parses JSON.
 
   pins.py components <platform>        the components that platform builds, in build order
-  pins.py get <component> <field>      one field of a component (version, url, sha256, license)
-  pins.py tarball <component>          the file name the component's url ends in
+  pins.py get <component> <field>      one text field of a component (version, sha256, license)
+  pins.py urls <component>             the URLs the component's tarball is fetched from, in the
+                                       order to try them, one per line
+  pins.py tarball <component>          the file name every one of those URLs ends in
   pins.py license-files <component>    the component's licence files, one per line
   pins.py tool <name>                  a build tool's pinned version
   pins.py requirements                 the build tools as a pip requirements file, each
                                        pinned to its wheel's sha256 (pip --require-hashes)
   pins.py macos-minimum                the oldest macOS the archive runs on
   pins.py get-top <key>                a top-level text value (python_minimum, macos_minimum)
+  pins.py sha256 <file>                the file's sha256
   pins.py verify <component> <file>    exits 1 unless the file's sha256 is the pinned one
   pins.py verify-bundle <folder>       exits 1 unless the folder holds every pinned tarball,
                                        each with its pinned sha256, and nothing else
@@ -33,7 +36,20 @@ def load():
     names = set(pins["components"])
     if names != set(BUILD_ORDER):
         sys.exit(f"pins.json names {sorted(names)}, but the build order is {BUILD_ORDER}")
+    # Each URL is another place to fetch the same file, which the sha256
+    # decides: they must all name it, so the tarball has one name.
+    for name, info in pins["components"].items():
+        urls = info.get("urls")
+        if not isinstance(urls, list) or not urls or not all(isinstance(u, str) and u.startswith("https://") for u in urls):
+            sys.exit(f"pins.json: {name}'s urls must be a list of https URLs")
+        files = {u.rsplit("/", 1)[1] for u in urls}
+        if len(files) != 1:
+            sys.exit(f"pins.json: {name}'s urls end in different file names {sorted(files)}")
     return pins
+
+
+def tarball_name(info):
+    return info["urls"][0].rsplit("/", 1)[1]
 
 
 def component(pins, name):
@@ -68,8 +84,11 @@ def main(argv):
         if value is None or isinstance(value, (list, dict)):
             sys.exit(f"{argv[2]} has no text field {argv[3]}")
         print(value)
+    elif cmd == "urls" and len(argv) == 3:
+        for url in component(pins, argv[2])["urls"]:
+            print(url)
     elif cmd == "tarball" and len(argv) == 3:
-        print(component(pins, argv[2])["url"].rsplit("/", 1)[1])
+        print(tarball_name(component(pins, argv[2])))
     elif cmd == "license-files" and len(argv) == 3:
         for name in component(pins, argv[2])["license_files"]:
             print(name)
@@ -87,13 +106,15 @@ def main(argv):
         print(value)
     elif cmd == "macos-minimum" and len(argv) == 2:
         print(pins["macos_minimum"])
+    elif cmd == "sha256" and len(argv) == 3:
+        print(sha256_of(argv[2]))
     elif cmd == "verify" and len(argv) == 4:
         want = component(pins, argv[2])["sha256"]
         got = sha256_of(argv[3])
         if got != want:
             sys.exit(f"{argv[3]}: sha256 {got}, but pins.json pins {want} for {argv[2]}")
     elif cmd == "verify-bundle" and len(argv) == 3:
-        want = {component(pins, n)["url"].rsplit("/", 1)[1]: n for n in BUILD_ORDER}
+        want = {tarball_name(component(pins, n)): n for n in BUILD_ORDER}
         have = set(os.listdir(argv[2]))
         missing = sorted(set(want) - have)
         extra = sorted(have - set(want))

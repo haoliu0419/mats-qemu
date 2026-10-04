@@ -15,8 +15,9 @@ that QEMU version. It holds:
   `mats-qemu-<version>-<n>-linux-x64.tar.xz`: `qemu-system-arm` with the
   shared libraries it loads beside it, `licenses/<component>/`, a `NOTICE`
   naming each component's exact version, and `manifest.json` (the
-  configure line, the component and build-tool versions, the system
-  libraries it links and each file's sha256);
+  configure line, the component and build-tool versions, each tarball's
+  sha256 and the URL it was fetched from, the system libraries it links
+  and each file's sha256);
 - `mats-qemu-<version>-<n>-sources.tar.xz`: every component's upstream
   tarball as built, `patches/`, `build/`, `pins.json` and the workflow;
 - `SHA256SUMS` over all four.
@@ -26,7 +27,9 @@ A rebuild is the next `n`.
 
 ## What is built
 
-`pins.json` pins each component's release tarball by URL and sha256:
+`pins.json` pins each component's release tarball by sha256, with the
+URLs to fetch it from in order: the upstream's release asset first where
+it publishes one (GitHub releases), then its own site or a second mirror.
 
 | Component | Licence | Linked |
 |---|---|---|
@@ -37,6 +40,7 @@ A rebuild is the next `n`.
 | libffi | MIT | shared |
 | zlib | Zlib | shared |
 | proxy-libintl | LGPL-2.0-or-later | shared, macOS and Windows |
+| winpthreads | MIT AND BSD-3-Clause-Clear | statically, into QEMU, Windows only |
 
 - **QEMU** is configured with every optional feature off
   (`--without-default-features`) and TCG on, for `arm-softmmu` only, with
@@ -67,7 +71,12 @@ A rebuild is the next `n`.
   `qemu.qmp` wheel its tarball carries, Python 3.12 and later bundle
   neither, and wheel needs packaging. On Windows, GCC's runtime is linked statically
   (`-static-libgcc`) and QEMU's stack protector is off, since it would load
-  MSYS2's `libssp` DLL; macOS and Linux keep the stack protector. Meson is
+  MSYS2's `libssp` DLL; macOS and Linux keep the stack protector. MSYS2's
+  winpthreads, which the executable would otherwise load as
+  `libwinpthread-1.dll`, is linked into it whole (`build-qemu.sh`);
+  `collect.py` copies its licence into `licenses/winpthreads/`, records its
+  MSYS2 package and version in the manifest, and still refuses any MSYS2
+  runtime DLL, naming every file that imports one. Meson is
   pinned in `pins.json` (QEMU uses the one its tarball carries). The
   manifest records every tool's version.
 - **macOS 12.0** is the oldest macOS the archive runs on (`macos_minimum`
@@ -89,8 +98,12 @@ with the build number:
 
 1. **check:** refuses a build number already released.
 2. **build,** per platform, `build/ci-build.sh <platform> <n>`:
-   - `fetch.sh` downloads each tarball, refuses one whose sha256 differs
-     from the pin, unpacks it (`unpack.py`) and applies `patches/`.
+   - `fetch.sh` fetches each tarball (`download.sh`), unpacks it
+     (`unpack.py`) and applies `patches/`. `download.sh` tries the pin's
+     URLs in order, each twice, keeps the first file whose sha256 is the
+     pinned one and deletes any other, so a mirror that serves other bytes
+     for a moment costs a retry; it fails only when no URL serves the
+     pinned file, naming what each one served.
      `unpack.py` makes each link in a tarball a copy of its target on every
      platform, since MSYS2's tar copies a link's target and fails when that
      target comes later in the tarball (GLib's `COPYING` does). A link that

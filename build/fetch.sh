@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-2.0-only
-# Downloads each component the platform builds into sources/, refuses any
-# tarball whose sha256 is not the pinned one, unpacks it into
+# Puts each component the platform builds in sources/ (download.sh, which
+# keeps only a tarball whose sha256 is the pinned one), unpacks it into
 # $WORK/src/<component> (unpack.py, the same way on every platform, each
 # link a copy of its target), and applies patches/<component>/*.patch in
-# name order. A tarball already in sources/ is checked, not downloaded again.
+# name order.
 source "$(dirname "$0")/common.sh"
 
 SOURCES="$ROOT/sources"
@@ -12,10 +12,7 @@ mkdir -p "$SOURCES" "$WORK/src"
 
 for name in $(pin components "$PLATFORM"); do
     tarball="$(pin tarball "$name")"
-    if [ ! -f "$SOURCES/$tarball" ]; then
-        curl -fsSL --retry 3 -o "$SOURCES/$tarball.part" "$(pin get "$name" url)"
-        mv "$SOURCES/$tarball.part" "$SOURCES/$tarball"
-    fi
+    bash "$ROOT/build/download.sh" "$name"
     pin verify "$name" "$SOURCES/$tarball"
 
     dest="$WORK/src/$name"

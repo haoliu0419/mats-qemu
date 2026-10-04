@@ -23,7 +23,8 @@ rm -rf "$STAGE" && mkdir -p "$STAGE/tarballs" "$ROOT/dist" "$ROOT/sources"
 
 for name in $(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import pins; print(" ".join(pins.BUILD_ORDER))' "$ROOT/build" | tr -d '\r'); do
     tarball="$(pin tarball "$name")"
-    [ -f "$ROOT/sources/$tarball" ] || curl -fsSL --retry 3 -o "$ROOT/sources/$tarball" "$(pin get "$name" url)"
+    # Its progress goes to stderr: stdout is the bundle's line alone.
+    bash "$ROOT/build/download.sh" "$name" >&2
     pin verify "$name" "$ROOT/sources/$tarball"
     cp "$ROOT/sources/$tarball" "$STAGE/tarballs/"
 done

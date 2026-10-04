@@ -13,6 +13,11 @@ bundle too. Each component keeps its own licence:
   libffi         MIT
   zlib           Zlib
   proxy-libintl  LGPL-2.0-or-later (the macOS and Windows archives only)
+  winpthreads    MIT AND BSD-3-Clause-Clear (the Windows archive only:
+                 MSYS2's build of mingw-w64's POSIX threads library,
+                 linked statically into qemu-system-arm.exe; the
+                 archive's manifest.json names its MSYS2 package and
+                 version, and its source is mingw-w64's at that version)
 
 Each licence's text is in the archive's licenses/<component>/ folder.
 

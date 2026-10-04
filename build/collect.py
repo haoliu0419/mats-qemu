@@ -14,7 +14,11 @@ sources bundle. Then:
     and a file whose minimum macOS is above pins.json's macos_minimum, or
     that names none, fails the stage;
   - on Linux, each file's RUNPATH becomes $ORIGIN;
-  - on Windows, the DLLs already resolve beside the executable;
+  - on Windows, the DLLs already resolve beside the executable, every DLL
+    that is neither Windows' nor the prefix's is named, for every file
+    that imports one, before the stage fails, and winpthreads, which
+    build-qemu.sh links into the executable, gets its licence and its
+    MSYS2 package's version;
 and the stage gains licenses/<component>/, NOTICE and manifest.json, and is
 archived as dist/mats-qemu-<version>-<n>-<platform>.tar.xz (.zip on
 Windows). Prints the archive's path and sha256.
@@ -65,6 +69,8 @@ class Platform:
     def __init__(self, name, prefix):
         self.name = name
         self.prefix = prefix
+        # Windows: each import that is neither Windows' nor the prefix's.
+        self.foreign = []
         self.exe = "qemu-system-arm.exe" if name == "windows-x64" else "qemu-system-arm"
 
     def executable(self):
@@ -139,7 +145,7 @@ class Platform:
                     fail(f"{path} links the system's {name}, not the one this build makes")
                 system.append(name)
             else:
-                fail(f"{path} needs {name}, neither Windows' nor the prefix's (an MSYS2 runtime DLL?)")
+                self.foreign.append(f"{os.path.basename(path)} imports {name}")
         return bundled, system
 
 
@@ -155,7 +161,33 @@ def closure(plat):
         bundled, sys_deps = plat.deps(path)
         system.update(sys_deps)
         todo.extend(bundled)
+    if plat.foreign:
+        fail("DLLs neither Windows' nor the prefix's (MSYS2 runtime DLLs?): " + "; ".join(sorted(plat.foreign)))
     return seen, sorted(system)
+
+
+def windows_static_runtime(stage):
+    """winpthreads, linked into qemu-system-arm.exe (build-qemu.sh): the
+    MSYS2 package that holds the archive it was linked from, its version
+    and licence, and its licence files copied into licenses/winpthreads/."""
+    lib = os.path.normpath(run("gcc", "-print-file-name=libwinpthread.a").strip())
+    if not os.path.isfile(lib):
+        fail(f"gcc names no libwinpthread.a ({lib})")
+    package = run("pacman", "-Qqo", run("cygpath", "-u", lib).strip()).strip()
+    version = run("pacman", "-Q", package).split()[1]
+    licence = None
+    for line in run("pacman", "-Qi", package).splitlines():
+        if line.startswith("Licenses"):
+            licence = line.split(":", 1)[1].strip()
+    files = [f for f in run("pacman", "-Qlq", package).splitlines() if "/share/licenses/" in f and not f.endswith("/")]
+    if not licence or not files:
+        fail(f"{package} names no licence, or holds no licence file")
+    dest = os.path.join(stage, "licenses", "winpthreads")
+    os.makedirs(dest, exist_ok=True)
+    for f in files:
+        shutil.copy2(run("cygpath", "-m", f).strip(), os.path.join(dest, os.path.basename(f)))
+    return {"winpthreads": {"package": package, "version": version, "license": licence,
+                            "linked": "statically, into qemu-system-arm.exe"}}
 
 
 def rewrite_macos(stage, files, prefix):
@@ -234,9 +266,10 @@ def licenses(stage, plat):
             shutil.copy2(os.path.join(src, lic), os.path.join(dest, lic))
 
 
-def write_notice(stage, plat, version, build_number):
+def write_notice(stage, plat, version, build_number, static_runtime):
     """The repository's NOTICE, then this archive's components at their
-    exact versions and the release and bundle that hold their source."""
+    exact versions and the release and bundle that hold their source, and
+    any toolchain library linked in statically."""
     with open(os.path.join(ROOT, "NOTICE"), encoding="utf-8") as f:
         text = f.read().rstrip() + "\n\n"
     tag = f"qemu-{version}-{build_number}"
@@ -244,7 +277,10 @@ def write_notice(stage, plat, version, build_number):
     for comp in pins_mod.BUILD_ORDER:
         info = PINS["components"][comp]
         if plat.name in info["platforms"]:
-            text += f"  {comp} {info['version']}, {info['license']}, from {info['url']}\n"
+            text += f"  {comp} {info['version']}, {info['license']}, from {info['urls'][0]}\n"
+    for name, info in static_runtime.items():
+        text += (f"  {name} {info['version']} (MSYS2's {info['package']}), {info['license']},\n"
+                 f"    linked {info['linked']}; its licence is in licenses/{name}/\n")
     text += (f"Its source: mats-qemu-{version}-{build_number}-sources.tar.xz at\n"
              f"https://github.com/haoliu0419/mats-qemu/releases/tag/{tag}\n")
     with open(os.path.join(stage, "NOTICE"), "w", encoding="utf-8") as f:
@@ -267,6 +303,24 @@ def archive(stage, base, plat):
         with tarfile.open(out, "w:xz") as t:
             t.add(stage, arcname=top)
     return out
+
+
+def fetched_sources(platform):
+    """Each component's tarball, its sha256 and the URL download.sh fetched
+    it from (sources/<tarball>.url)."""
+    found = {}
+    for comp in pins_mod.BUILD_ORDER:
+        info = PINS["components"][comp]
+        if platform not in info["platforms"]:
+            continue
+        tarball = pins_mod.tarball_name(info)
+        try:
+            with open(os.path.join(ROOT, "sources", tarball + ".url"), encoding="utf-8") as f:
+                url = f.read().strip()
+        except FileNotFoundError:
+            fail(f"sources/{tarball}.url is missing: run fetch.sh first")
+        found[comp] = {"tarball": tarball, "sha256": info["sha256"], "url": url}
+    return found
 
 
 def applied_patches(platform):
@@ -331,7 +385,8 @@ def main(argv):
         rewrite_linux(stage, sorted(files))
 
     licenses(stage, plat)
-    write_notice(stage, plat, version, build_number)
+    static_runtime = windows_static_runtime(stage) if platform == "windows-x64" else {}
+    write_notice(stage, plat, version, build_number, static_runtime)
     with open(os.path.join(WORK, "configure-line.txt"), encoding="utf-8") as f:
         configure = f.read().strip()
     manifest = {
@@ -342,6 +397,8 @@ def main(argv):
         "components": {c: PINS["components"][c]["version"] for c in pins_mod.BUILD_ORDER
                        if platform in PINS["components"][c]["platforms"]},
         "build_tools": tool_versions(platform),
+        "sources": fetched_sources(platform),
+        **({"static_runtime": static_runtime} if static_runtime else {}),
         "patches": applied_patches(platform),
         # The macOS minimum, and the SDK the build compiled against, which
         # decides what a configure check could find.
