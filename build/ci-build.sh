@@ -45,7 +45,9 @@ if [ -e "$bin/python3" ] || [ -e "$bin/python3.exe" ]; then export PYTHON="$bin/
 bash "$ROOT/build/fetch.sh" "$PLATFORM"
 bash "$ROOT/build/build-libs.sh" "$PLATFORM"
 bash "$ROOT/build/build-qemu.sh" "$PLATFORM"
-collected="$(python3 "$ROOT/build/collect.py" "$PLATFORM" "$N" | tr -d '\r')"
+# The tools' Python runs collect.py, which reads setuptools' version from
+# it; MSYS2's own python3 has none.
+collected="$("$PYTHON" "$ROOT/build/collect.py" "$PLATFORM" "$N" | tr -d '\r')"
 archive="${collected%%$'\n'*}"
 archive="${archive%% *}"
 # collect.py prints native paths; MSYS2's tools take POSIX ones.
@@ -60,5 +62,5 @@ case "$archive" in
 esac
 folder="$UNPACKED/$(basename "${archive%.zip}" .tar.xz)"
 if [ "$PLATFORM" = windows-x64 ]; then folder="$(cygpath -m "$folder")"; fi
-python3 "$ROOT/build/smoke.py" "$folder" "$(pin get qemu version)"
+"$PYTHON" "$ROOT/build/smoke.py" "$folder" "$(pin get qemu version)"
 echo "built and checked: $archive"

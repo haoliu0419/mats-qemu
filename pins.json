@@ -14,6 +14,9 @@
         "macos-arm64",
         "windows-x64",
         "linux-x64"
+      ],
+      "unresolved_links": [
+        "roms/edk2/EmulatorPkg/Unix/Host/X11IncludeHack"
       ]
     },
     "zlib": {

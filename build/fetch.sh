@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: GPL-2.0-only
 # Downloads each component the platform builds into sources/, refuses any
 # tarball whose sha256 is not the pinned one, unpacks it into
-# $WORK/src/<component>, and applies patches/<component>/*.patch in name
-# order. A tarball already in sources/ is checked, not downloaded again.
+# $WORK/src/<component> (unpack.py, the same way on every platform, each
+# link a copy of its target), and applies patches/<component>/*.patch in
+# name order. A tarball already in sources/ is checked, not downloaded again.
 source "$(dirname "$0")/common.sh"
 
 SOURCES="$ROOT/sources"
@@ -20,7 +21,7 @@ for name in $(pin components "$PLATFORM"); do
     dest="$WORK/src/$name"
     rm -rf "$dest"
     mkdir -p "$dest"
-    tar -xf "$SOURCES/$tarball" -C "$dest" --strip-components=1
+    python3 "$ROOT/build/unpack.py" "$name" "$SOURCES/$tarball" "$dest" | tr -d '\r'
 
     if [ -d "$ROOT/patches/$name" ]; then
         find "$ROOT/patches/$name" -maxdepth 1 -name '*.patch' | LC_ALL=C sort | while read -r p; do

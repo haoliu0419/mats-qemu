@@ -90,7 +90,15 @@ with the build number:
 1. **check:** refuses a build number already released.
 2. **build,** per platform, `build/ci-build.sh <platform> <n>`:
    - `fetch.sh` downloads each tarball, refuses one whose sha256 differs
-     from the pin, and applies `patches/`;
+     from the pin, unpacks it (`unpack.py`) and applies `patches/`.
+     `unpack.py` makes each link in a tarball a copy of its target on every
+     platform, since MSYS2's tar copies a link's target and fails when that
+     target comes later in the tarball (GLib's `COPYING` does). A link that
+     points outside its tarball or to nothing in it is left out, and must be
+     listed in the component's `unresolved_links` in `pins.json` (QEMU's
+     one is an EDK II link to `/opt/X11/include`, in firmware sources the
+     build does not use); a listed one that the tarball resolves, or lacks,
+     fails the unpack too;
    - `build-libs.sh` builds zlib, libffi, PCRE2 and GLib into the prefix;
    - `build-qemu.sh` builds QEMU against them;
    - `collect.py` copies the executable and every library it loads from
