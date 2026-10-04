@@ -8,7 +8,11 @@ each one the build made into the stage beside the executable. Every other
 dependency must be the operating system's own: one found anywhere else, or
 a system copy of a library this build makes (zlib, libffi, pcre2, libintl,
 glib), fails the stage by name, since its source would not be in the
-sources bundle. Then:
+sources bundle. Then each staged file is stripped of its debug information
+and local symbols, which the archive has no use for and which are not kept
+anywhere (`strip -S -x` on macOS, `strip --strip-unneeded` elsewhere; a
+file with a debugging symbol left on macOS, or a .debug section on Linux and
+Windows, fails the stage), and:
   - on macOS, every reference to the prefix becomes @loader_path/<name>
     and each file is signed ad hoc again (the app signs them for release),
     and a file whose minimum macOS is above pins.json's macos_minimum, or
@@ -244,6 +248,34 @@ def check_macos_minimum(stage, files, floor):
             fail(f"{name} needs macOS {found}, above the archive's minimum {floor}")
 
 
+def strip_files(stage, files, platform):
+    """Strips each staged file in place, before the macOS rewrite re-signs
+    it and before patchelf; returns how, for the manifest. A shared library
+    keeps the symbols it exports: -x and --strip-unneeded drop only what
+    nothing links against. On macOS -S drops the debugging symbols, which
+    point the debugger at the build machine's object files."""
+    command = ["strip", "-S", "-x"] if platform == "macos-arm64" else ["strip", "--strip-unneeded"]
+    for name in files:
+        path = os.path.join(stage, name)
+        os.chmod(path, 0o755)
+        run(*command, path)
+    how = {"command": " ".join(command)}
+    if platform == "macos-arm64":
+        for name in files:
+            # nm -a marks a debugging symbol with "-" and names its kind
+            # (SO, OSO, FUN...) before the name. OPT is the marker Apple's
+            # linker puts in every image and strip keeps; it names no file.
+            kinds = re.findall(r"^\S* +- \S+ \S+ +(\S+)", run("nm", "-a", os.path.join(stage, name)), re.M)
+            if [k for k in kinds if k != "OPT"]:
+                fail(f"{name} still has debugging symbols after {how['command']}: {sorted(set(kinds))}")
+    else:
+        how["version"] = run("strip", "--version").splitlines()[0].strip()
+        for name in files:
+            if ".debug" in run("objdump", "-h", os.path.join(stage, name)):
+                fail(f"{name} still has a .debug section after {how['command']}")
+    return how
+
+
 def rewrite_linux(stage, files):
     for name in files:
         path = os.path.join(stage, name)
@@ -377,6 +409,7 @@ def main(argv):
     files, system = closure(plat)
     for name, path in files.items():
         shutil.copy2(path, os.path.join(stage, name), follow_symlinks=True)
+    stripped = strip_files(stage, sorted(files), platform)
     if platform == "macos-arm64":
         rewrite_macos(stage, sorted(files), prefix)
         check_macos_minimum(stage, sorted(files), PINS["macos_minimum"])
@@ -404,6 +437,7 @@ def main(argv):
         # decides what a configure check could find.
         **({"macos_minimum": PINS["macos_minimum"], "macos_sdk": run("xcrun", "--show-sdk-version").strip()}
            if platform == "macos-arm64" else {}),
+        "stripped": stripped,
         "system_libraries": system,
         "files": {name: sha256_of(os.path.join(stage, name)) for name in sorted(files)},
     }

@@ -16,8 +16,8 @@ that QEMU version. It holds:
   shared libraries it loads beside it, `licenses/<component>/`, a `NOTICE`
   naming each component's exact version, and `manifest.json` (the
   configure line, the component and build-tool versions, each tarball's
-  sha256 and the URL it was fetched from, the system libraries it links
-  and each file's sha256);
+  sha256 and the URL it was fetched from, how the files were stripped,
+  the system libraries it links and each file's sha256);
 - `mats-qemu-<version>-<n>-sources.tar.xz`: every component's upstream
   tarball as built, `patches/`, `build/`, `pins.json` and the workflow;
 - `SHA256SUMS` over all four.
@@ -115,10 +115,12 @@ with the build number:
    - `build-libs.sh` builds zlib, libffi, PCRE2 and GLib into the prefix;
    - `build-qemu.sh` builds QEMU against them;
    - `collect.py` copies the executable and every library it loads from
-     the prefix, makes them find each other beside it (`@loader_path` on
-     macOS, `$ORIGIN` on Linux; Windows looks beside the executable),
-     checks the macOS minimum, adds the licences, NOTICE and manifest, and
-     archives the result;
+     the prefix, strips each of its debug information and local symbols
+     (`strip -S -x` on macOS, `strip --strip-unneeded` elsewhere; the
+     archive has no use for them and they are not kept), makes them find
+     each other beside it (`@loader_path` on macOS, `$ORIGIN` on Linux;
+     Windows looks beside the executable), checks the macOS minimum, adds
+     the licences, NOTICE and manifest, and archives the result;
    - `smoke.py` runs the archive unpacked into a fresh folder: the version,
      `mps2-an521` and the socket and file serial backends are present, and
      the machine starts with UART0 a socket server on 127.0.0.1 that
