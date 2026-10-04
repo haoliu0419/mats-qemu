@@ -28,7 +28,8 @@ else
 fi
 JOBS="$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)"
 
-pin() { python3 "$ROOT/build/pins.py" "$@"; }
+# Any \r a Windows Python writes is dropped (pins.py writes none itself).
+pin() { python3 "$ROOT/build/pins.py" "$@" | tr -d '\r'; }
 
 # pkg-config sees the prefix alone: a library found anywhere else (Homebrew
 # on the macOS runner, MSYS2's packages on Windows) would ship binaries

@@ -13,14 +13,15 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 N="${1:-}"
 case "$N" in ''|*[!0-9]*) echo "usage: $0 <build number>" >&2; exit 2 ;; esac
-pin() { python3 "$ROOT/build/pins.py" "$@"; }
+# Any \r a Windows Python writes is dropped (pins.py writes none itself).
+pin() { python3 "$ROOT/build/pins.py" "$@" | tr -d '\r'; }
 
 VERSION="$(pin get qemu version)"
 NAME="mats-qemu-$VERSION-$N-sources"
 STAGE="$ROOT/work/bundle/$NAME"
 rm -rf "$STAGE" && mkdir -p "$STAGE/tarballs" "$ROOT/dist" "$ROOT/sources"
 
-for name in $(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import pins; print(" ".join(pins.BUILD_ORDER))' "$ROOT/build"); do
+for name in $(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import pins; print(" ".join(pins.BUILD_ORDER))' "$ROOT/build" | tr -d '\r'); do
     tarball="$(pin tarball "$name")"
     [ -f "$ROOT/sources/$tarball" ] || curl -fsSL --retry 3 -o "$ROOT/sources/$tarball" "$(pin get "$name" url)"
     pin verify "$name" "$ROOT/sources/$tarball"

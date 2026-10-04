@@ -21,7 +21,8 @@ N="${2:-}"
 case "$N" in ''|*[!0-9]*) echo "usage: $0 <platform> <build number>" >&2; exit 2 ;; esac
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PY="${PYTHON:-python3}"
-pin() { "$PY" "$ROOT/build/pins.py" "$@"; }
+# Any \r a Windows Python writes is dropped (pins.py writes none itself).
+pin() { "$PY" "$ROOT/build/pins.py" "$@" | tr -d '\r'; }
 WORK="${MATS_QEMU_WORK:-$ROOT/work/$PLATFORM}"
 mkdir -p "$WORK"
 
@@ -44,7 +45,7 @@ if [ -e "$bin/python3" ] || [ -e "$bin/python3.exe" ]; then export PYTHON="$bin/
 bash "$ROOT/build/fetch.sh" "$PLATFORM"
 bash "$ROOT/build/build-libs.sh" "$PLATFORM"
 bash "$ROOT/build/build-qemu.sh" "$PLATFORM"
-collected="$(python3 "$ROOT/build/collect.py" "$PLATFORM" "$N")"
+collected="$(python3 "$ROOT/build/collect.py" "$PLATFORM" "$N" | tr -d '\r')"
 archive="${collected%%$'\n'*}"
 archive="${archive%% *}"
 # collect.py prints native paths; MSYS2's tools take POSIX ones.

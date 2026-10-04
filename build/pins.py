@@ -51,6 +51,10 @@ def sha256_of(path):
 
 
 def main(argv):
+    # Lines end in \n on every platform: a Windows Python (MSYS2's UCRT64 one)
+    # would write \r\n, and a shell loop over the output would read "zlib\r".
+    sys.stdout.reconfigure(newline="\n")
+    argv = [a.strip() for a in argv]
     if len(argv) < 2:
         sys.exit(__doc__)
     pins = load()
