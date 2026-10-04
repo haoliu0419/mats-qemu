@@ -85,6 +85,38 @@
         "windows-x64"
       ]
     },
+    "winpthreads": {
+      "version": "14.0.0.r426.g4564ee4b5-1",
+      "kind": "msys2",
+      "urls": [
+        "https://repo.msys2.org/mingw/sources/mingw-w64-winpthreads-14.0.0.r426.g4564ee4b5-1.src.tar.zst",
+        "https://mirror.msys2.org/mingw/sources/mingw-w64-winpthreads-14.0.0.r426.g4564ee4b5-1.src.tar.zst"
+      ],
+      "sha256": "5493832de1b7e24f09edb556ed409091b0844f9677212c4865618d6f93c508be",
+      "license": "MIT AND BSD-3-Clause-Clear",
+      "license_files": [
+        "COPYING"
+      ],
+      "platforms": [
+        "windows-x64"
+      ],
+      "packages": {
+        "mingw-w64-ucrt-x86_64-libwinpthread": {
+          "urls": [
+            "https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libwinpthread-14.0.0.r426.g4564ee4b5-1-any.pkg.tar.zst",
+            "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libwinpthread-14.0.0.r426.g4564ee4b5-1-any.pkg.tar.zst"
+          ],
+          "sha256": "f8de8153bbc0e47ba244a423c12c426fa1d9f56395117ecaa34c6ad6ebed6ca3"
+        },
+        "mingw-w64-ucrt-x86_64-winpthreads": {
+          "urls": [
+            "https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-winpthreads-14.0.0.r426.g4564ee4b5-1-any.pkg.tar.zst",
+            "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-winpthreads-14.0.0.r426.g4564ee4b5-1-any.pkg.tar.zst"
+          ],
+          "sha256": "c24b627938c592666c7c2f73cc83be29c552f935f6c6cc25b86b20959629bfee"
+        }
+      }
+    },
     "glib": {
       "version": "2.88.3",
       "urls": [

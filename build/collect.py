@@ -18,11 +18,11 @@ Windows, fails the stage), and:
     and a file whose minimum macOS is above pins.json's macos_minimum, or
     that names none, fails the stage;
   - on Linux, each file's RUNPATH becomes $ORIGIN;
-  - on Windows, the DLLs already resolve beside the executable, every DLL
-    that is neither Windows' nor the prefix's is named, for every file
-    that imports one, before the stage fails, and winpthreads, which
-    build-qemu.sh links into the executable, gets its licence and its
-    MSYS2 package's version;
+  - on Windows, the DLLs already resolve beside the executable (winpthreads'
+    among them, which fetch.sh put in the prefix from its pinned package),
+    every DLL that is neither Windows' nor the prefix's is named, for every
+    file that imports one, before the stage fails, and GCC's runtime
+    library, linked into each file, is recorded with GCC's version;
 and the stage gains licenses/<component>/, NOTICE and manifest.json, and is
 archived as dist/mats-qemu-<version>-<n>-<platform>.tar.xz (.zip on
 Windows). Prints the archive's path and sha256.
@@ -44,7 +44,7 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), 
 
 # Libraries this build makes: a system copy of one is refused, so the
 # shipped bytes are always the ones built from the pinned source.
-OWN = re.compile(r"(^|/)(lib)?(z|zlib1?|ffi|pcre2-8|intl|glib-2\.0|gio-2\.0|gobject-2\.0|gmodule-2\.0|gthread-2\.0)([-.]|$)",
+OWN = re.compile(r"(^|/)(lib)?(z|zlib1?|ffi|pcre2-8|intl|winpthread|glib-2\.0|gio-2\.0|gobject-2\.0|gmodule-2\.0|gthread-2\.0)([-.]|$)",
                  re.IGNORECASE)
 
 LINUX_SYSTEM = {
@@ -170,28 +170,14 @@ def closure(plat):
     return seen, sorted(system)
 
 
-def windows_static_runtime(stage):
-    """winpthreads, linked into qemu-system-arm.exe (build-qemu.sh): the
-    MSYS2 package that holds the archive it was linked from, its version
-    and licence, and its licence files copied into licenses/winpthreads/."""
-    lib = os.path.normpath(run("gcc", "-print-file-name=libwinpthread.a").strip())
-    if not os.path.isfile(lib):
-        fail(f"gcc names no libwinpthread.a ({lib})")
-    package = run("pacman", "-Qqo", run("cygpath", "-u", lib).strip()).strip()
-    version = run("pacman", "-Q", package).split()[1]
-    licence = None
-    for line in run("pacman", "-Qi", package).splitlines():
-        if line.startswith("Licenses"):
-            licence = line.split(":", 1)[1].strip()
-    files = [f for f in run("pacman", "-Qlq", package).splitlines() if "/share/licenses/" in f and not f.endswith("/")]
-    if not licence or not files:
-        fail(f"{package} names no licence, or holds no licence file")
-    dest = os.path.join(stage, "licenses", "winpthreads")
-    os.makedirs(dest, exist_ok=True)
-    for f in files:
-        shutil.copy2(run("cygpath", "-m", f).strip(), os.path.join(dest, os.path.basename(f)))
-    return {"winpthreads": {"package": package, "version": version, "license": licence,
-                            "linked": "statically, into qemu-system-arm.exe"}}
+def windows_toolchain_libraries():
+    """GCC's runtime library, which -static-libgcc links into each file of the
+    Windows archive: GCC's version and the exception it ships under. It is
+    the toolchain's, so neither its source nor a licence file is bundled;
+    the NOTICE names it."""
+    return {"libgcc": {"version": run("gcc", "--version").splitlines()[0].strip(),
+                       "license": "GPL-3.0-or-later WITH GCC-exception-3.1",
+                       "linked": "statically, into each file (-static-libgcc)"}}
 
 
 def rewrite_macos(stage, files, prefix):
@@ -298,10 +284,10 @@ def licenses(stage, plat):
             shutil.copy2(os.path.join(src, lic), os.path.join(dest, lic))
 
 
-def write_notice(stage, plat, version, build_number, static_runtime):
+def write_notice(stage, plat, version, build_number, toolchain):
     """The repository's NOTICE, then this archive's components at their
     exact versions and the release and bundle that hold their source, and
-    any toolchain library linked in statically."""
+    the toolchain's own libraries linked in."""
     with open(os.path.join(ROOT, "NOTICE"), encoding="utf-8") as f:
         text = f.read().rstrip() + "\n\n"
     tag = f"qemu-{version}-{build_number}"
@@ -310,9 +296,8 @@ def write_notice(stage, plat, version, build_number, static_runtime):
         info = PINS["components"][comp]
         if plat.name in info["platforms"]:
             text += f"  {comp} {info['version']}, {info['license']}, from {info['urls'][0]}\n"
-    for name, info in static_runtime.items():
-        text += (f"  {name} {info['version']} (MSYS2's {info['package']}), {info['license']},\n"
-                 f"    linked {info['linked']}; its licence is in licenses/{name}/\n")
+    for name, info in toolchain.items():
+        text += f"  {name} ({info['version']}), {info['license']}, linked {info['linked']}\n"
     text += (f"Its source: mats-qemu-{version}-{build_number}-sources.tar.xz at\n"
              f"https://github.com/haoliu0419/mats-qemu/releases/tag/{tag}\n")
     with open(os.path.join(stage, "NOTICE"), "w", encoding="utf-8") as f:
@@ -337,21 +322,32 @@ def archive(stage, base, plat):
     return out
 
 
+def fetched_url(name):
+    """The URL download.sh fetched sources/<name> from (<name>.url)."""
+    try:
+        with open(os.path.join(ROOT, "sources", name + ".url"), encoding="utf-8") as f:
+            return f.read().strip()
+    except FileNotFoundError:
+        fail(f"sources/{name}.url is missing: run fetch.sh first")
+
+
 def fetched_sources(platform):
     """Each component's tarball, its sha256 and the URL download.sh fetched
-    it from (sources/<tarball>.url)."""
+    it from, and for an msys2 component each binary package installed, the
+    same way."""
     found = {}
     for comp in pins_mod.BUILD_ORDER:
         info = PINS["components"][comp]
         if platform not in info["platforms"]:
             continue
         tarball = pins_mod.tarball_name(info)
-        try:
-            with open(os.path.join(ROOT, "sources", tarball + ".url"), encoding="utf-8") as f:
-                url = f.read().strip()
-        except FileNotFoundError:
-            fail(f"sources/{tarball}.url is missing: run fetch.sh first")
-        found[comp] = {"tarball": tarball, "sha256": info["sha256"], "url": url}
+        found[comp] = {"tarball": tarball, "sha256": info["sha256"], "url": fetched_url(tarball)}
+        packages = {}
+        for pkg, pinfo in info.get("packages", {}).items():
+            file = pinfo["urls"][0].rsplit("/", 1)[1]
+            packages[pkg] = {"file": file, "sha256": pinfo["sha256"], "url": fetched_url(file)}
+        if packages:
+            found[comp]["packages"] = packages
     return found
 
 
@@ -418,8 +414,8 @@ def main(argv):
         rewrite_linux(stage, sorted(files))
 
     licenses(stage, plat)
-    static_runtime = windows_static_runtime(stage) if platform == "windows-x64" else {}
-    write_notice(stage, plat, version, build_number, static_runtime)
+    toolchain = windows_toolchain_libraries() if platform == "windows-x64" else {}
+    write_notice(stage, plat, version, build_number, toolchain)
     with open(os.path.join(WORK, "configure-line.txt"), encoding="utf-8") as f:
         configure = f.read().strip()
     manifest = {
@@ -431,7 +427,7 @@ def main(argv):
                        if platform in PINS["components"][c]["platforms"]},
         "build_tools": tool_versions(platform),
         "sources": fetched_sources(platform),
-        **({"static_runtime": static_runtime} if static_runtime else {}),
+        **({"toolchain_libraries": toolchain} if toolchain else {}),
         "patches": applied_patches(platform),
         # The macOS minimum, and the SDK the build compiled against, which
         # decides what a configure check could find.

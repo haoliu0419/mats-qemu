@@ -42,21 +42,9 @@ configure_args=(
 if [ "$PLATFORM" != windows-x64 ]; then
     configure_args+=(--enable-stack-protector)
 fi
-# On Windows, winpthreads goes into the executable rather than loading as
-# MSYS2's libwinpthread-1.dll, which the archive does not carry. The whole
-# archive is one linker argument, so meson keeps it whole and in place, and
-# a later reference from GCC's runtime finds it already linked. collect.py
-# adds its licence and still refuses the DLL by name.
-placeholders=(-e "s#--prefix=$NATIVE_PREFIX#--prefix=<prefix>#")
-if [ "$PLATFORM" = windows-x64 ]; then
-    winpthread="$(gcc -print-file-name=libwinpthread.a | tr -d '\r')"
-    [ -f "$(cygpath -u "$winpthread")" ] || { echo "gcc names no libwinpthread.a ($winpthread)" >&2; exit 1; }
-    configure_args+=(--extra-ldflags="-Wl,--whole-archive,$winpthread,--no-whole-archive")
-    placeholders+=(-e "s#$winpthread#<libwinpthread.a>#")
-fi
-# The manifest's copy names the prefix and the toolchain's files by
-# placeholders: the build machine's paths say nothing about the archive.
-printf '%s\n' "configure ${configure_args[*]}" | sed "${placeholders[@]}" > "$WORK/configure-line.txt"
+# The manifest's copy names the prefix by a placeholder: the build
+# machine's path says nothing about the archive.
+printf '%s\n' "configure ${configure_args[*]}" | sed "s#--prefix=$NATIVE_PREFIX#--prefix=<prefix>#" > "$WORK/configure-line.txt"
 
 (cd "$BLD" && "$SRC/configure" "${configure_args[@]}" && make -j "$JOBS" && make install)
 

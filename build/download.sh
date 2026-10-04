@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-2.0-only
-# Puts one component's pinned tarball in sources/:
-#   download.sh <component>
+# Puts one component's pinned tarball in sources/, or with a package name
+# one of an msys2 component's pinned binary packages:
+#   download.sh <component> [package]
 # A copy already there is kept when its sha256 is the pinned one and
 # removed otherwise. Then each of the component's urls in pins.json is
 # tried in order, twice with a pause between, and the first file whose
@@ -14,14 +15,24 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 NAME="${1:-}"
-[ -n "$NAME" ] || { echo "usage: $0 <component>" >&2; exit 2; }
+PACKAGE="${2:-}"
+[ -n "$NAME" ] || { echo "usage: $0 <component> [package]" >&2; exit 2; }
 # Any \r a Windows Python writes is dropped (pins.py writes none itself).
 pin() { python3 "$ROOT/build/pins.py" "$@" | tr -d '\r'; }
 
 SOURCES="$ROOT/sources"
 mkdir -p "$SOURCES"
-tarball="$(pin tarball "$NAME")"
-want="$(pin get "$NAME" sha256)"
+COMPONENT="$NAME"
+if [ -n "$PACKAGE" ]; then
+    tarball="$(pin package-file "$COMPONENT" "$PACKAGE")"
+    want="$(pin package-sha256 "$COMPONENT" "$PACKAGE")"
+    urls_of() { pin package-urls "$COMPONENT" "$PACKAGE"; }
+    NAME="$COMPONENT/$PACKAGE"
+else
+    tarball="$(pin tarball "$COMPONENT")"
+    want="$(pin get "$COMPONENT" sha256)"
+    urls_of() { pin urls "$COMPONENT"; }
+fi
 dest="$SOURCES/$tarball"
 
 if [ -f "$dest" ]; then
@@ -35,7 +46,7 @@ if [ -f "$dest" ]; then
 fi
 
 tried=()
-exec 3< <(pin urls "$NAME")
+exec 3< <(urls_of)
 while read -r url <&3; do
     for attempt in 1 2; do
         [ "$attempt" = 1 ] || sleep 10

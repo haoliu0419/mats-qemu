@@ -3,7 +3,9 @@
 QEMU builds for the Mats virtual target: `qemu-system-arm` with the
 `mps2-an521` machine, for macOS arm64 and Windows x64 (shipped inside the
 Mats app) and Linux x64 (for Mats' CI). This repository holds what makes
-them and publishes, with each build, the exact source of everything in it.
+them and publishes, with each build, the exact source of every library in
+it; GCC's runtime library, which the Windows toolchain links into each
+file, is named in each archive's manifest and notice instead.
 
 ## What a release holds
 
@@ -18,8 +20,9 @@ that QEMU version. It holds:
   configure line, the component and build-tool versions, each tarball's
   sha256 and the URL it was fetched from, how the files were stripped,
   the system libraries it links and each file's sha256);
-- `mats-qemu-<version>-<n>-sources.tar.xz`: every component's upstream
-  tarball as built, `patches/`, `build/`, `pins.json` and the workflow;
+- `mats-qemu-<version>-<n>-sources.tar.xz`: the source of each component
+  pinned in `pins.json` as fetched (the upstream tarballs, and MSYS2's
+  source package for winpthreads), `patches/`, `build/`, `pins.json` and the workflow;
 - `SHA256SUMS` over all four.
 
 A published release never changes: the app pins each archive by sha256.
@@ -40,7 +43,8 @@ it publishes one (GitHub releases), then its own site or a second mirror.
 | libffi | MIT | shared |
 | zlib | Zlib | shared |
 | proxy-libintl | LGPL-2.0-or-later | shared, macOS and Windows |
-| winpthreads | MIT AND BSD-3-Clause-Clear | statically, into QEMU, Windows only |
+| winpthreads | MIT AND BSD-3-Clause-Clear | shared (`libwinpthread-1.dll`), Windows only: MSYS2's build from pinned packages |
+| libgcc | GPL-3.0-or-later WITH GCC-exception-3.1 | statically, into each file, Windows only (`-static-libgcc`) |
 
 - **QEMU** is configured with every optional feature off
   (`--without-default-features`) and TCG on, for `arm-softmmu` only, with
@@ -54,10 +58,17 @@ it publishes one (GitHub releases), then its own site or a second mirror.
   Windows GLib builds proxy-libintl, a stub with no translations, from the
   pinned tarball (its own wrap's, checked against the pin).
 - **The libraries** are built from their tarballs on every platform, never
-  taken from Homebrew or MSYS2, so the sources bundle is exactly what was
-  built. pkg-config sees only the build's prefix, Meson never downloads,
-  and `build/collect.py` refuses an archive that links any library other
-  than the operating system's and its own.
+  taken from Homebrew or MSYS2, except winpthreads on Windows: the
+  toolchain links it, so the build installs MSYS2's own packages of it at
+  the version `pins.json` pins (`pacman -U`, each package checked by
+  sha256), requires `pacman -Q` to report exactly that version, and ships
+  its `libwinpthread-1.dll` checked against the sha256 pacman recorded
+  (`build/msys2_files.py`); MSYS2's source package for that build is pinned
+  and bundled. GCC's runtime library is linked into each Windows file
+  (`-static-libgcc`, under the GCC Runtime Library Exception) and is the one
+  library not in the sources bundle. pkg-config sees only the build's
+  prefix, Meson never downloads, and `build/collect.py` refuses an archive
+  that links any library other than the operating system's and its own.
 - **Build tools** come from each platform: Xcode's clang, Homebrew's
   pkgconf and ninja on macOS; Ubuntu's GCC, cmake and ninja; MSYS2 UCRT64's
   GCC, cmake, ninja and Python on Windows. They run the build and are not
@@ -71,12 +82,9 @@ it publishes one (GitHub releases), then its own site or a second mirror.
   `qemu.qmp` wheel its tarball carries, Python 3.12 and later bundle
   neither, and wheel needs packaging. On Windows, GCC's runtime is linked statically
   (`-static-libgcc`) and QEMU's stack protector is off, since it would load
-  MSYS2's `libssp` DLL; macOS and Linux keep the stack protector. MSYS2's
-  winpthreads, which the executable would otherwise load as
-  `libwinpthread-1.dll`, is linked into it whole (`build-qemu.sh`);
-  `collect.py` copies its licence into `licenses/winpthreads/`, records its
-  MSYS2 package and version in the manifest, and still refuses any MSYS2
-  runtime DLL, naming every file that imports one. Meson is
+  MSYS2's `libssp` DLL; macOS and Linux keep the stack protector.
+  `collect.py` refuses any other MSYS2 runtime DLL, naming every file that
+  imports one, and records GCC's version for its runtime library. Meson is
   pinned in `pins.json` (QEMU uses the one its tarball carries). The
   manifest records every tool's version.
 - **macOS 12.0** is the oldest macOS the archive runs on (`macos_minimum`

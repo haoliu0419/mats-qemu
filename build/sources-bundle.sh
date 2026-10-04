@@ -5,8 +5,11 @@
 # tarballs/ is checked to hold each one at its pin and nothing else, or no
 # bundle is written, and the release with it), patches/,
 # build/, pins.json, the workflow, README.md, LICENSE and NOTICE. That is
-# the exact source of every archive built with this build number, and how
-# it was built. Prints the bundle's path and sha256.
+# the exact source of every library the archives of this build number carry
+# (winpthreads' as MSYS2's source package for the build they ship), and
+# how they were built; GCC's runtime library, which the Windows toolchain
+# links into each file, is named in each archive's manifest and NOTICE, not
+# bundled. Prints the bundle's path and sha256.
 #   sources-bundle.sh <build number>
 set -euo pipefail
 

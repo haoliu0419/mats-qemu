@@ -6,6 +6,14 @@
   pins.py urls <component>             the URLs the component's tarball is fetched from, in the
                                        order to try them, one per line
   pins.py tarball <component>          the file name every one of those URLs ends in
+  pins.py kind <component>             "tarball" (built from its source) or "msys2" (MSYS2's
+                                       build installed from pinned packages; its source package
+                                       is pinned and bundled, not built)
+  pins.py packages <component>         an msys2 component's binary packages, one per line, the
+                                       runtime package (the one with the DLL) first
+  pins.py package-urls <c> <package>   that package's URLs, in the order to try them
+  pins.py package-file <c> <package>   the file name they end in
+  pins.py package-sha256 <c> <package> its pinned sha256
   pins.py license-files <component>    the component's licence files, one per line
   pins.py tool <name>                  a build tool's pinned version
   pins.py requirements                 the build tools as a pip requirements file, each
@@ -24,8 +32,11 @@ import sys
 
 # Each library is built before what links it: glib takes zlib, libffi,
 # pcre2 and (on macOS and Windows) proxy-libintl, and QEMU takes glib and
-# zlib, and builds dtc's libfdt itself, as its subproject.
-BUILD_ORDER = ["zlib", "libffi", "pcre2", "proxy-libintl", "glib", "dtc", "qemu"]
+# zlib, and builds dtc's libfdt itself, as its subproject. On Windows,
+# winpthreads (MSYS2's, installed from its pinned packages) is in place
+# before glib and QEMU link it.
+BUILD_ORDER = ["zlib", "libffi", "pcre2", "proxy-libintl", "winpthreads", "glib", "dtc", "qemu"]
+KINDS = ("tarball", "msys2")
 
 PINS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "pins.json")
 
@@ -45,6 +56,15 @@ def load():
         files = {u.rsplit("/", 1)[1] for u in urls}
         if len(files) != 1:
             sys.exit(f"pins.json: {name}'s urls end in different file names {sorted(files)}")
+        if info.get("kind", "tarball") not in KINDS:
+            sys.exit(f"pins.json: {name}'s kind must be one of {KINDS}")
+        if (info.get("kind") == "msys2") != bool(info.get("packages")):
+            sys.exit(f"pins.json: {name} must name its packages exactly when its kind is msys2")
+        for pkg, pinfo in info.get("packages", {}).items():
+            purls = pinfo.get("urls")
+            if not isinstance(purls, list) or not purls or not all(u.startswith("https://") for u in purls) \
+                    or len({u.rsplit("/", 1)[1] for u in purls}) != 1 or not pinfo.get("sha256"):
+                sys.exit(f"pins.json: {name}'s package {pkg} needs https urls ending in one file name, and a sha256")
     return pins
 
 
@@ -89,6 +109,22 @@ def main(argv):
             print(url)
     elif cmd == "tarball" and len(argv) == 3:
         print(tarball_name(component(pins, argv[2])))
+    elif cmd == "kind" and len(argv) == 3:
+        print(component(pins, argv[2]).get("kind", "tarball"))
+    elif cmd == "packages" and len(argv) == 3:
+        for pkg in component(pins, argv[2]).get("packages", {}):
+            print(pkg)
+    elif cmd in ("package-urls", "package-file", "package-sha256") and len(argv) == 4:
+        pkg = component(pins, argv[2]).get("packages", {}).get(argv[3])
+        if pkg is None:
+            sys.exit(f"pins.json: {argv[2]} has no package {argv[3]}")
+        if cmd == "package-urls":
+            for url in pkg["urls"]:
+                print(url)
+        elif cmd == "package-file":
+            print(pkg["urls"][0].rsplit("/", 1)[1])
+        else:
+            print(pkg["sha256"])
     elif cmd == "license-files" and len(argv) == 3:
         for name in component(pins, argv[2])["license_files"]:
             print(name)
