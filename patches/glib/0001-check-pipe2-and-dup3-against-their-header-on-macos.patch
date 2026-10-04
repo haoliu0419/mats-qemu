@@ -1,0 +1,18 @@
+--- a/meson.build	2026-10-04 19:23:35
++++ b/meson.build	2026-10-04 19:23:35
+@@ -834,8 +834,14 @@
+   functions += ['sysinfo']
+ endif
+ 
++# On macOS a function the SDK declares newer than the deployment target
++# (pipe2 and dup3 are macOS 27's) links weak and is NULL on an older
++# macOS. Checked against its header, the SDK's availability attribute
++# applies, and a build that makes unguarded availability an error finds
++# it missing.
++darwin_header_checked = ['pipe2', 'dup3']
+ foreach f : functions
+-  if cc.has_function(f)
++  if cc.has_function(f, prefix: host_system == 'darwin' and darwin_header_checked.contains(f) ? '#include <unistd.h>' : '')
+     define = 'HAVE_' + f.underscorify().to_upper()
+     glib_conf.set(define, 1)
+     glib_conf_prefix = glib_conf_prefix + '#define @0@ 1\n'.format(define)

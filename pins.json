@@ -1,0 +1,129 @@
+{
+  "components": {
+    "qemu": {
+      "version": "11.1.2",
+      "url": "https://download.qemu.org/qemu-11.1.2.tar.xz",
+      "sha256": "731b5681e4bb18be313231579b8efd0296c5b015fa36dc533874b639ba838016",
+      "license": "GPL-2.0-only",
+      "license_files": [
+        "COPYING",
+        "COPYING.LIB",
+        "LICENSE"
+      ],
+      "platforms": [
+        "macos-arm64",
+        "windows-x64",
+        "linux-x64"
+      ]
+    },
+    "zlib": {
+      "version": "1.3.2",
+      "url": "https://zlib.net/zlib-1.3.2.tar.xz",
+      "sha256": "d7a0654783a4da529d1bb793b7ad9c3318020af77667bcae35f95d0e42a792f3",
+      "license": "Zlib",
+      "license_files": [
+        "LICENSE"
+      ],
+      "platforms": [
+        "macos-arm64",
+        "windows-x64",
+        "linux-x64"
+      ]
+    },
+    "libffi": {
+      "version": "3.8.0",
+      "url": "https://github.com/libffi/libffi/releases/download/v3.8.0/libffi-3.8.0.tar.gz",
+      "sha256": "7da3e2d9a171eb0a038f592ecad3ff2bb2550f3496d87b3b29ad0cf4430c0db4",
+      "license": "MIT",
+      "license_files": [
+        "LICENSE"
+      ],
+      "platforms": [
+        "macos-arm64",
+        "windows-x64",
+        "linux-x64"
+      ]
+    },
+    "pcre2": {
+      "version": "10.49",
+      "url": "https://github.com/PCRE2Project/pcre2/releases/download/pcre2-10.49/pcre2-10.49.tar.bz2",
+      "sha256": "53c156e1ba416a20da8e65395daa132da0d80e76910424caca3fcdae7831d384",
+      "license": "BSD-3-Clause WITH PCRE2-exception",
+      "license_files": [
+        "LICENCE.md"
+      ],
+      "platforms": [
+        "macos-arm64",
+        "windows-x64",
+        "linux-x64"
+      ]
+    },
+    "proxy-libintl": {
+      "version": "0.5",
+      "url": "https://github.com/mesonbuild/wrapdb/releases/download/proxy-libintl_0.5-1/proxy-libintl-0.5.tar.gz",
+      "sha256": "f7a1cbd7579baaf575c66f9d99fb6295e9b0684a28b095967cfda17857595303",
+      "license": "LGPL-2.0-or-later",
+      "license_files": [
+        "COPYING"
+      ],
+      "platforms": [
+        "macos-arm64",
+        "windows-x64"
+      ]
+    },
+    "glib": {
+      "version": "2.88.3",
+      "url": "https://download.gnome.org/sources/glib/2.88/glib-2.88.3.tar.xz",
+      "sha256": "ab24d24e698dfa1e408b7bcdb508f4aafc906185a8b8ce72fdf79bbbdc9b383b",
+      "license": "LGPL-2.1-or-later",
+      "license_files": [
+        "COPYING"
+      ],
+      "platforms": [
+        "macos-arm64",
+        "windows-x64",
+        "linux-x64"
+      ]
+    },
+    "dtc": {
+      "version": "1.6.1",
+      "url": "https://mirrors.edge.kernel.org/pub/software/utils/dtc/dtc-1.6.1.tar.xz",
+      "sha256": "65cec529893659a49a89740bb362f507a3b94fc8cd791e76a8d6a2b6f3203473",
+      "license": "GPL-2.0-or-later OR BSD-2-Clause",
+      "license_files": [
+        "README.license",
+        "BSD-2-Clause",
+        "GPL"
+      ],
+      "platforms": [
+        "macos-arm64",
+        "windows-x64",
+        "linux-x64"
+      ]
+    }
+  },
+  "build_tools": {
+    "meson": {
+      "version": "1.12.1",
+      "wheel": "meson-1.12.1-py3-none-any.whl",
+      "sha256": "930bc7542cbd9f57009e182fd014eba48cf1a0180a7b9006d2d32d8f168d8b02"
+    },
+    "setuptools": {
+      "version": "84.0.0",
+      "wheel": "setuptools-84.0.0-py3-none-any.whl",
+      "sha256": "51a52592b3b99e102b609654876bd65f19f999935166d1352678931132b0c670"
+    },
+    "wheel": {
+      "version": "0.48.0",
+      "wheel": "wheel-0.48.0-py3-none-any.whl",
+      "sha256": "3217dcc807155e45db462d7ef2431f5ddda0d7273b700d05a67b271ceb1287ab"
+    },
+    "packaging": {
+      "version": "26.3",
+      "wheel": "packaging-26.3-py3-none-any.whl",
+      "sha256": "d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c"
+    }
+  },
+  "python_minimum": "3.10",
+  "macos_minimum": "12.0"
+}

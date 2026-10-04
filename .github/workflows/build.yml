@@ -1,0 +1,161 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Builds the pinned QEMU (pins.json) for macOS arm64, Windows x64 and
+# Linux x64, checks and smokes each archive (build/ci-build.sh), and
+# publishes the three archives, their SHA256SUMS and the sources bundle as
+# the release qemu-<version>-<n>. It runs only when dispatched. A build
+# number already released is refused: the app pins each archive's sha256,
+# so a published release never changes.
+name: build
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_number:
+        description: "n in qemu-<version>-<n>: 1 for a new QEMU version, the next number for a rebuild of the same one"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: build number
+    runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: The release must not exist yet
+        id: tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          N: ${{ inputs.build_number }}
+        run: |
+          case "$N" in ''|0*|*[!0-9]*) echo "the build number must be a positive integer, not '$N'" >&2; exit 1 ;; esac
+          tag="qemu-$(python3 build/pins.py get qemu version)-$N"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
+             || git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null; then
+            echo "$tag is already released, and the app pins its archives by sha256: dispatch the next build number" >&2
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: ${{ matrix.platform }}
+    needs: check
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-arm64
+            os: macos-latest
+            shell: bash
+          - platform: linux-x64
+            os: ubuntu-24.04
+            shell: bash
+          - platform: windows-x64
+            os: windows-latest
+            shell: msys2 {0}
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: ${{ matrix.shell }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # Python 3.12 runs meson and the build's scripts on macOS and Linux
+      # (pins.json's python_minimum is 3.10); on Windows MSYS2's own UCRT64
+      # Python does, since meson must run inside that environment, and
+      # ci-build.sh checks its version as it checks this one.
+      - uses: actions/setup-python@v7
+        if: matrix.platform != 'windows-x64'
+        with:
+          python-version: '3.12'
+
+      # Build tools only: compilers, cmake, ninja, pkg-config and Python run
+      # the build and are not linked into what ships. collect.py refuses any
+      # library from these package managers in the archive.
+      - name: Build tools (macOS)
+        if: matrix.platform == 'macos-arm64'
+        run: brew install pkgconf ninja
+
+      - name: Build tools (Linux)
+        if: matrix.platform == 'linux-x64'
+        run: |
+          sudo apt-get update -o Acquire::Retries=3
+          sudo apt-get install -y -o Acquire::Retries=3 build-essential cmake ninja-build pkg-config patchelf python3-venv
+
+      - name: Build tools (Windows)
+        if: matrix.platform == 'windows-x64'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            make patch tar xz bzip2 unzip diffutils curl
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-binutils
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-python
+
+      - name: Build, collect and smoke
+        run: bash build/ci-build.sh "${{ matrix.platform }}" "${{ inputs.build_number }}"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: archive-${{ matrix.platform }}
+          path: dist/
+          if-no-files-found: error
+
+  release:
+    name: release
+    needs: [check, build]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: archive-*
+          path: dist/
+          merge-multiple: true
+
+      - name: The sources bundle
+        run: bash build/sources-bundle.sh "${{ inputs.build_number }}"
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.check.outputs.tag }}
+        run: |
+          cd dist
+          want=4
+          have="$(ls | wc -l)"
+          [ "$have" -eq "$want" ] || { echo "dist holds $have files, not the three archives and the sources bundle:" >&2; ls >&2; exit 1; }
+          sha256sum * > SHA256SUMS
+          cat SHA256SUMS
+          {
+            echo "QEMU $(python3 ../build/pins.py get qemu version), build ${{ inputs.build_number }}, for the Mats virtual target."
+            echo
+            echo "The exact source of every archive here, with the build scripts, is $(ls *-sources.tar.xz)."
+            echo "Each archive carries its components' licences in licenses/, a NOTICE and a manifest.json."
+            echo
+            echo '```'
+            cat SHA256SUMS
+            echo '```'
+          } > ../notes.md
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "$TAG appeared while this run built; nothing is published" >&2
+            exit 1
+          fi
+          gh release create "$TAG" --target "$GITHUB_SHA" --title "$TAG" --notes-file ../notes.md *

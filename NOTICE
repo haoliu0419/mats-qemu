@@ -1,0 +1,29 @@
+mats-qemu: QEMU for the Mats virtual target
+
+The archives this repository publishes hold qemu-system-arm and the shared
+libraries it loads, built from upstream source releases with the patches
+in patches/ (one, to GLib's configure on macOS), which ship in the sources
+bundle too. Each component keeps its own licence:
+
+  QEMU           GPL-2.0-only (some files under compatible licences; see
+                 its LICENSE)
+  dtc (libfdt)   GPL-2.0-or-later OR BSD-2-Clause, linked into QEMU
+  GLib           LGPL-2.1-or-later
+  PCRE2          BSD-3-Clause WITH PCRE2-exception
+  libffi         MIT
+  zlib           Zlib
+  proxy-libintl  LGPL-2.0-or-later (the macOS and Windows archives only)
+
+Each licence's text is in the archive's licenses/<component>/ folder.
+
+Source: every release qemu-<version>-<n> of
+https://github.com/haoliu0419/mats-qemu carries
+mats-qemu-<version>-<n>-sources.tar.xz, which holds each component's
+upstream tarball exactly as built, every patch, and the scripts and
+workflow that built that release's archives. It stays published for as
+long as the release does. The repository's own scripts are under the
+GPL-2.0 (LICENSE).
+
+GLib, PCRE2, libffi, zlib and proxy-libintl are linked dynamically: each is
+a separate file in the archive that can be replaced by a build of the same
+library from its source.
