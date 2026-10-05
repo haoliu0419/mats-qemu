@@ -11,8 +11,8 @@ Every other component builds from its unmodified upstream tarball.
 
 - **Why:** the macOS 27 SDK declares `pipe2` and `dup3` available from
   macOS 27 on. GLib 2.88.3 sets `HAVE_PIPE2` from a check without the
-  header (`cc.has_function(f)`, meson.build), so a build with that SDK for
-  macOS 12 called `pipe2` unguarded, and QEMU crashed in
+  header (`cc.has_function(f)`, meson.build), so without the patch a build
+  with that SDK for macOS 12 calls `pipe2` unguarded, and QEMU crashes in
   `g_unix_open_pipe` at start on any older macOS.
 - **When to drop it:** once the pinned GLib checks these functions against
   their header on macOS itself; the patch then no longer applies, and
