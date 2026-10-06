@@ -26,6 +26,7 @@ jobs:
   check:
     name: build number
     runs-on: ubuntu-24.04
+    timeout-minutes: 5 # 2x the slowest green run
     outputs:
       tag: ${{ steps.tag.outputs.tag }}
     steps:
@@ -63,6 +64,7 @@ jobs:
             os: windows-latest
             shell: msys2 {0}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 45 # a cold build: MSYS2's update and QEMU from source on Windows, with no cache
     defaults:
       run:
         shell: ${{ matrix.shell }}
@@ -119,6 +121,7 @@ jobs:
     name: release
     needs: [check, build]
     runs-on: ubuntu-24.04
+    timeout-minutes: 5 # 2x the slowest green run
     permissions:
       contents: write
     steps:
