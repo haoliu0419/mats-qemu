@@ -11,48 +11,16 @@ the licence folder. It fails, by name, when the package is not installed at
 exactly that version, ships no DLL, or a file differs from its record.
 Runs in the Windows build's MSYS2 shell, under its native Python.
 """
-import gzip
-import hashlib
 import os
 import shutil
-import subprocess
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from msys2_db import native, package_files, sha256_of  # noqa: E402
 
 
 def fail(msg):
     sys.exit(f"msys2_files: {msg}")
-
-
-def native(posix):
-    return subprocess.run(["cygpath", "-m", posix], check=True, capture_output=True, text=True).stdout.strip()
-
-
-def sha256_of(path):
-    h = hashlib.sha256()
-    with open(path, "rb") as f:
-        for block in iter(lambda: f.read(1 << 20), b""):
-            h.update(block)
-    return h.hexdigest()
-
-
-def mtree_files(text):
-    """Each regular file the mtree lists, as {path: fields}, its /set
-    defaults applied."""
-    defaults, files = {}, {}
-    for line in text.splitlines():
-        parts = line.split()
-        if not parts or parts[0].startswith("#"):
-            continue
-        fields = dict(p.split("=", 1) for p in parts[1:] if "=" in p)
-        if parts[0] == "/set":
-            defaults.update(fields)
-            continue
-        if not parts[0].startswith("./"):
-            continue
-        merged = {**defaults, **fields}
-        if merged.get("type", "file") == "file":
-            files[parts[0][2:]] = merged
-    return files
 
 
 def main(argv):
@@ -60,11 +28,9 @@ def main(argv):
     if len(argv) != 5:
         sys.exit(__doc__)
     package, version, dll_dir, licence_dir = argv[1:]
-    db = native(f"/var/lib/pacman/local/{package}-{version}")
-    if not os.path.isfile(os.path.join(db, "mtree")):
+    files = package_files(package, version)
+    if files is None:
         fail(f"{package} {version} is not installed")
-    with gzip.open(os.path.join(db, "mtree"), "rt", encoding="utf-8") as f:
-        files = mtree_files(f.read())
     taken = []
     for path, fields in sorted(files.items()):
         parts = path.split("/")

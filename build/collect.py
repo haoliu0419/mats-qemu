@@ -18,14 +18,20 @@ Windows, fails the stage), and:
     and a file whose minimum macOS is above pins.json's macos_minimum, or
     that names none, fails the stage;
   - on Linux, each file's RUNPATH becomes $ORIGIN;
+  - on every platform, a file built for another architecture than the
+    platform's (lipo on macOS, objdump elsewhere) fails the stage;
   - on Windows, the DLLs already resolve beside the executable (winpthreads'
     among them, which fetch.sh put in the prefix from its pinned package),
     every DLL that is neither Windows' nor the prefix's is named, for every
-    file that imports one, before the stage fails, and GCC's runtime
-    library, linked into each file, is recorded with GCC's version;
+    file that imports one, before the stage fails, a compiler or linker
+    flag that loads a GCC plugin fails it, and GCC's runtime library,
+    linked into each file, is recorded with GCC's version and the MSYS2
+    package that installed it, its two licence texts taken from that
+    package and checked against pins.json;
 and the stage gains licenses/<component>/, NOTICE and manifest.json, and is
 archived as dist/mats-qemu-<version>-<n>-<platform>.tar.xz (.zip on
-Windows). Prints the archive's path and sha256.
+Windows), whose licence texts for GCC's runtime are checked again as
+written. Prints the archive's path and sha256.
 """
 import hashlib
 import json
@@ -170,14 +176,116 @@ def closure(plat):
     return seen, sorted(system)
 
 
-def windows_toolchain_libraries():
+# The architecture every staged file is built for, by platform.
+ARCHITECTURES = {"macos-arm64": "arm64", "linux-x64": "x86-64", "windows-x64": "x86-64"}
+
+
+def check_architecture(stage, files, platform, run_cmd=None):
+    """Every staged file is built for the platform's architecture: on macOS
+    lipo names exactly arm64 (a universal file fails too); elsewhere objdump
+    names the 64-bit x86 file format (elf64-x86-64, or pei-x86-64 on
+    Windows) and architecture i386:x86-64. A file of another one fails the
+    stage, each named. Returns the architecture, for the manifest."""
+    run_cmd = run_cmd or run
+    wrong = []
+    for name in files:
+        path = os.path.join(stage, name)
+        if platform == "macos-arm64":
+            seen = " ".join(run_cmd("lipo", "-archs", path).split())
+            ok = seen == "arm64"
+        else:
+            out = run_cmd("objdump", "-f", path)
+            fmt = re.search(r"file format (\S+)", out)
+            arch = re.search(r"architecture: ([^,\s]+)", out)
+            seen = f"{fmt.group(1) if fmt else 'no file format'}, {arch.group(1) if arch else 'no architecture'}"
+            want = "pei-x86-64" if platform == "windows-x64" else "elf64-x86-64"
+            ok = bool(fmt and arch) and fmt.group(1) == want and arch.group(1) == "i386:x86-64"
+        if not ok:
+            wrong.append(f"{name} ({seen})")
+    if wrong:
+        fail(f"files not built for {platform}: " + "; ".join(wrong))
+    return ARCHITECTURES[platform]
+
+
+def windows_build_flags(run_cmd=None):
+    """The compiler and linker flags the Windows build used: those common.sh
+    sets for every build script, read by sourcing it as they do under the
+    environment this inherits."""
+    run_cmd = run_cmd or run
+    script = 'source "$1" "$2" >/dev/null && printf "%s\\n" "${CFLAGS-}" "${CXXFLAGS-}" "${LDFLAGS-}"'
+    lines = run_cmd("bash", "-c", script, "flags", os.path.join(ROOT, "build", "common.sh"), "windows-x64").splitlines()
+    return dict(zip(("CFLAGS", "CXXFLAGS", "LDFLAGS"), (line.strip() for line in lines)))
+
+
+def check_no_plugins(flags):
+    """GCC loads a plugin only when a flag names one (-fplugin=...). The
+    NOTICE says the Windows archive is built by GCC with no plugins, the
+    GCC Runtime Library Exception's Eligible Compilation Process, so any
+    flag that loads one, in `flags` ({where: flags}), fails the stage."""
+    found = [f"{where}: {flag}" for where, text in flags.items() for flag in text.split() if "-fplugin" in flag]
+    if found:
+        fail("a flag loads a GCC plugin, which the NOTICE says the Windows build does not: " + "; ".join(found))
+
+
+def windows_toolchain_libraries(stage, run_cmd=None):
     """GCC's runtime library, which -static-libgcc links into each file of the
-    Windows archive: GCC's version and the exception it ships under. It is
-    the toolchain's, so neither its source nor a licence file is bundled;
-    the NOTICE names it."""
-    return {"libgcc": {"version": run("gcc", "--version").splitlines()[0].strip(),
+    Windows archive: GCC's version, the MSYS2 package that installed the
+    libgcc the build linked, and the exception it ships under. Its source
+    is not bundled, which the exception does not require. Its licence
+    texts, GCC's COPYING3 (GPL-3.0) and COPYING.RUNTIME (the GCC Runtime
+    Library Exception 3.1), are taken from that package into
+    licenses/libgcc/, each checked against the sha256 pacman recorded for
+    it and the one pins.json pins (toolchain_licenses), so a changed text
+    fails the stage by name. Called once check_no_plugins has passed.
+    It reads pacman's database through msys2_db.py, which only the Windows
+    build needs, so collect.py runs without it elsewhere."""
+    import msys2_db
+    run_cmd = run_cmd or run
+    libgcc = run_cmd("cygpath", "-u", run_cmd("gcc", "-print-libgcc-file-name").strip()).strip()
+    package, version = msys2_db.owner(libgcc, run_cmd)
+    files = msys2_db.package_files(package, version, run_cmd)
+    if files is None:
+        fail(f"{package} {version}, which installed {libgcc}, has no record in pacman's database")
+    dest = os.path.join(stage, "licenses", "libgcc")
+    os.makedirs(dest, exist_ok=True)
+    taken = {}
+    for name, want in PINS["toolchain_licenses"]["libgcc"].items():
+        path = next((p for p in sorted(files) if p.split("/")[1:] == ["share", "licenses", "gcc", name]), None)
+        if path is None:
+            fail(f"{package} {version} ships no share/licenses/gcc/{name}")
+        source = msys2_db.native("/" + path, run_cmd)
+        got = msys2_db.sha256_of(source)
+        if got != files[path].get("sha256digest"):
+            fail(f"{path} differs from the sha256 pacman recorded for {package} {version}")
+        if got != want:
+            fail(f"{path} is not the text pins.json pins (toolchain_licenses): its sha256 is {got}, the pin {want}")
+        shutil.copy2(source, os.path.join(dest, name))
+        taken[name] = got
+    return {"libgcc": {"version": run_cmd("gcc", "--version").splitlines()[0].strip(),
+                       "gcc": run_cmd("gcc", "-dumpfullversion").strip(),
+                       "package": package,
+                       "package_version": version,
+                       "file": libgcc,
                        "license": "GPL-3.0-or-later WITH GCC-exception-3.1",
+                       "license_files": taken,
+                       "plugins": "none",
                        "linked": "statically, into each file (-static-libgcc)"}}
+
+
+def check_archive_licences(out, top, toolchain):
+    """The Windows archive as written holds each toolchain library's licence
+    texts under <top>/licenses/<library>/, at the sha256 the manifest
+    records and pins.json pins."""
+    with zipfile.ZipFile(out) as z:
+        names = set(z.namelist())
+        for lib, info in toolchain.items():
+            for name, want in info["license_files"].items():
+                member = f"{top}/licenses/{lib}/{name}"
+                if member not in names:
+                    fail(f"{os.path.basename(out)} has no {member}")
+                got = hashlib.sha256(z.read(member)).hexdigest()
+                if got != want or got != PINS["toolchain_licenses"][lib][name]:
+                    fail(f"{os.path.basename(out)}'s {member} has sha256 {got}, not the pinned text's")
 
 
 def rewrite_macos(stage, files, prefix):
@@ -297,7 +405,8 @@ def write_notice(stage, plat, version, build_number, toolchain):
         if plat.name in info["platforms"]:
             text += f"  {comp} {info['version']}, {info['license']}, from {info['urls'][0]}\n"
     for name, info in toolchain.items():
-        text += f"  {name} ({info['version']}), {info['license']}, linked {info['linked']}\n"
+        text += (f"  {name} (gcc {info['gcc']}, {info['package']} {info['package_version']}), {info['license']},"
+                 f" linked {info['linked']}\n")
     text += (f"Its source: mats-qemu-{version}-{build_number}-sources.tar.xz at\n"
              f"https://github.com/haoliu0419/mats-qemu/releases/tag/{tag}\n")
     with open(os.path.join(stage, "NOTICE"), "w", encoding="utf-8") as f:
@@ -413,16 +522,21 @@ def main(argv):
         check_no_weak_imports(stage, sorted(files))
     elif platform == "linux-x64":
         rewrite_linux(stage, sorted(files))
+    architecture = check_architecture(stage, sorted(files), platform)
 
-    licenses(stage, plat)
-    toolchain = windows_toolchain_libraries() if platform == "windows-x64" else {}
-    write_notice(stage, plat, version, build_number, toolchain)
     with open(os.path.join(WORK, "configure-line.txt"), encoding="utf-8") as f:
         configure = f.read().strip()
+    licenses(stage, plat)
+    toolchain = {}
+    if platform == "windows-x64":
+        check_no_plugins({**windows_build_flags(), "configure": configure})
+        toolchain = windows_toolchain_libraries(stage)
+    write_notice(stage, plat, version, build_number, toolchain)
     manifest = {
         "qemu": version,
         "build": int(build_number),
         "platform": platform,
+        "architecture": architecture,
         "configure": configure,
         "components": {c: PINS["components"][c]["version"] for c in pins_mod.BUILD_ORDER
                        if platform in PINS["components"][c]["platforms"]},
@@ -443,6 +557,8 @@ def main(argv):
         f.write("\n")
 
     out = archive(stage, base, plat)
+    if toolchain:
+        check_archive_licences(out, base, toolchain)
     print(f"{out} {sha256_of(out)}")
     print(f"stage: {stage}")
 

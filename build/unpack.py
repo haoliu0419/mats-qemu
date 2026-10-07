@@ -12,16 +12,23 @@ not in it, cannot be copied and is left out; each such link must be listed
 in the component's unresolved_links in pins.json, and each listed one must
 be such a link, so the list stays true for the pinned tarball. A member
 that is not a folder, a file or a link, or whose path is absolute or climbs
-out with "..", fails the unpack.
+out with "..", fails the unpack, and so does a path or link target that
+Windows would read otherwise: a part holding a backslash or starting with
+a drive ("C:"), or one that lands outside the folder.
 """
 import os
 import posixpath
+import re
 import shutil
 import sys
 import tarfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import pins as pins_mod  # noqa: E402
+
+
+# A path part Windows reads as a drive.
+DRIVE = re.compile(r"^[A-Za-z]:")
 
 
 def fail(msg):
@@ -44,8 +51,21 @@ def main(argv):
     name, tarball, dest = argv[1], argv[2], argv[3]
     listed = set(pins_mod.component(pins_mod.load(), name).get("unresolved_links", []))
 
+    root = os.path.abspath(dest)
+
     def local(rel):
-        return os.path.join(dest, *rel.split("/"))
+        """`rel` (a tarball path, "/"-separated) under the folder. A part
+        that Windows reads as a separator or a drive, or one that leaves
+        the folder, fails: os.path.join would let it reset or climb out."""
+        parts = rel.split("/")
+        for part in parts:
+            if (part in ("", ".", "..") or "\\" in part or DRIVE.match(part)
+                    or os.path.splitdrive(part)[0] or os.path.isabs(part)):
+                fail(f"{tarball}: {rel} has a part, {part!r}, that is no plain name")
+        path = os.path.abspath(os.path.join(root, *parts))
+        if os.path.commonpath([root, path]) != root:
+            fail(f"{tarball}: {rel} is outside {dest}")
+        return path
 
     top = None
     files = 0

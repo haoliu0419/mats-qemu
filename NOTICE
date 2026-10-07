@@ -7,7 +7,9 @@ bundle too. Each component keeps its own licence:
 
   QEMU           GPL-2.0-only (some files under compatible licences; see
                  its LICENSE)
-  dtc (libfdt)   GPL-2.0-or-later OR BSD-2-Clause, linked into QEMU
+  dtc (libfdt)   GPL-2.0-or-later OR BSD-2-Clause, built into QEMU,
+                 which is GPL-2.0 and carries it as such; its source is
+                 in the sources bundle
   GLib           LGPL-2.1-or-later
   PCRE2          BSD-3-Clause WITH PCRE2-exception
   libffi         MIT
@@ -19,8 +21,11 @@ bundle too. Each component keeps its own licence:
                  their exact source package is in the sources bundle)
   libgcc         GPL-3.0-or-later WITH GCC-exception-3.1 (the Windows
                  archive only: GCC's runtime library, linked into each
-                 file with -static-libgcc; the exception places no
-                 condition on the program that links it)
+                 file with -static-libgcc. The exception permits that
+                 whatever the licence of the program it is linked into,
+                 provided the program comes from an Eligible Compilation
+                 Process; this archive does, being built by GCC with no
+                 plugins. Its texts are in licenses/libgcc/)
 
 Each licence's text is in the archive's licenses/<component>/ folder.
 
@@ -31,9 +36,10 @@ component pins.json names exactly as it was fetched: the upstream tarballs
 of QEMU, dtc, GLib, PCRE2, libffi, zlib and proxy-libintl, and MSYS2's
 source package of the winpthreads build the Windows archive carries; every
 patch; and the scripts and workflow that built that release's archives.
-libgcc comes with the Windows toolchain and is not in it. It stays
-published for as long as the release does. The repository's own scripts are under the
-GPL-2.0 (LICENSE).
+libgcc comes with the Windows toolchain and is not in it: the GCC Runtime
+Library Exception does not require its source to be offered. The bundle
+stays published for as long as the release does. This repository's
+scripts are under the GPL-2.0 (LICENSE).
 
 GLib, PCRE2, libffi, zlib, proxy-libintl and winpthreads are linked
 dynamically: each is a separate file in the archive that can be replaced by

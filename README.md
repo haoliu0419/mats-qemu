@@ -5,7 +5,8 @@ QEMU builds for the Mats virtual target: `qemu-system-arm` with the
 Mats app) and Linux x64 (for Mats' CI). This repository holds what makes
 them and publishes, with each build, the exact source of every library in
 it; GCC's runtime library, which the Windows toolchain links into each
-file, is named in each archive's manifest and notice instead.
+file, is named in each archive's manifest and notice instead, with its
+licence texts.
 
 ## What a release holds
 
@@ -67,7 +68,10 @@ it publishes one (GitHub releases), then its own site or a second mirror.
   (`build/msys2_files.py`); MSYS2's source package for that build is pinned
   and bundled. GCC's runtime library is linked into each Windows file
   (`-static-libgcc`, under the GCC Runtime Library Exception) and is the one
-  library not in the sources bundle. pkg-config sees only the build's
+  library not in the sources bundle, which the exception does not require;
+  its two licence texts come from the GCC package that installed it, each
+  checked against the sha256 pacman recorded and the one `pins.json` pins
+  (`toolchain_licenses`). pkg-config sees only the build's
   prefix, Meson never downloads, and `build/collect.py` refuses an archive
   that links any library other than the operating system's and its own.
 - **Build tools** come from each platform: Xcode's clang, Homebrew's pkgconf
@@ -85,7 +89,8 @@ it publishes one (GitHub releases), then its own site or a second mirror.
   (`-static-libgcc`) and QEMU's stack protector is off, since it would load
   MSYS2's `libssp` DLL; macOS and Linux keep the stack protector.
   `collect.py` refuses any other MSYS2 runtime DLL, naming every file that
-  imports one, and records GCC's version for its runtime library. Meson is
+  imports one, and any flag that loads a GCC plugin, and records GCC's
+  version and the MSYS2 package that installed its runtime library. Meson is
   pinned in `pins.json` (QEMU uses the one its tarball carries). The
   manifest records every tool's version.
 - **macOS 12.0** is the oldest macOS the archive runs on (`macos_minimum` in
@@ -106,7 +111,10 @@ The workflow (`.github/workflows/build.yml`) runs only when dispatched,
 with the build number:
 
 1. **check:** refuses a build number already released.
-2. **build,** per platform, `build/ci-build.sh <platform> <n>`:
+2. **tests:** the build scripts' own tests (`build/tests`, Python's
+   unittest on Linux), every compiler, download and toolchain answered by
+   the tests; the builds start only once they pass.
+3. **build,** per platform, `build/ci-build.sh <platform> <n>`:
    - `fetch.sh` fetches each tarball (`download.sh`), unpacks it
      (`unpack.py`) and applies `patches/`. `download.sh` tries the pin's
      URLs in order, each twice, keeps the first file whose sha256 is the
@@ -120,7 +128,9 @@ with the build number:
      listed in the component's `unresolved_links` in `pins.json` (QEMU's
      one is an EDK II link to `/opt/X11/include`, in firmware sources the
      build does not use); a listed one that the tarball resolves, or lacks,
-     fails the unpack too;
+     fails the unpack too. A path or link target with a part Windows reads
+     as a separator or a drive (a backslash, `C:`), or one that would land
+     outside the folder, fails the unpack on every platform;
    - `build-libs.sh` builds zlib, libffi, PCRE2 and GLib into the prefix;
    - `build-qemu.sh` builds QEMU against them;
    - `collect.py` copies the executable and every library it loads from
@@ -128,13 +138,15 @@ with the build number:
      (`strip -S -x` on macOS, `strip --strip-unneeded` elsewhere; the
      archive has no use for them and they are not kept), makes them find
      each other beside it (`@loader_path` on macOS, `$ORIGIN` on Linux;
-     Windows looks beside the executable), checks the macOS minimum, adds
-     the licences, NOTICE and manifest, and archives the result;
+     Windows looks beside the executable), checks the macOS minimum and
+     that every file is built for the platform's architecture (`lipo` on
+     macOS, `objdump` elsewhere), adds the licences, NOTICE and manifest,
+     and archives the result;
    - `smoke.py` runs the archive unpacked into a fresh folder: the version,
      `mps2-an521` and the socket and file serial backends are present, and
      the machine starts with UART0 a socket server on 127.0.0.1 that
      accepts a connection.
-3. **release:** builds the sources bundle, which must hold every pinned
+4. **release:** builds the sources bundle, which must hold every pinned
    tarball at its pin and nothing else (`pins.py verify-bundle`), writes
    `SHA256SUMS`, and publishes the release with the workflow's own token.
 

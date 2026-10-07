@@ -175,6 +175,12 @@
       "sha256": "d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c"
     }
   },
+  "toolchain_licenses": {
+    "libgcc": {
+      "COPYING3": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903",
+      "COPYING.RUNTIME": "9d6b43ce4d8de0c878bf16b54d8e7a10d9bd42b75178153e3af6a815bdc90f74"
+    }
+  },
   "python_minimum": "3.10",
   "macos_minimum": "12.0"
 }

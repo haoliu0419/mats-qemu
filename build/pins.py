@@ -65,6 +65,12 @@ def load():
             if not isinstance(purls, list) or not purls or not all(u.startswith("https://") for u in purls) \
                     or len({u.rsplit("/", 1)[1] for u in purls}) != 1 or not pinfo.get("sha256"):
                 sys.exit(f"pins.json: {name}'s package {pkg} needs https urls ending in one file name, and a sha256")
+    # The licence texts of a toolchain library linked into the Windows
+    # archive (collect.py), each file's sha256 pinned.
+    for lib, texts in pins.get("toolchain_licenses", {}).items():
+        if not isinstance(texts, dict) or not texts or not all(
+                isinstance(h, str) and len(h) == 64 and all(c in "0123456789abcdef" for c in h) for h in texts.values()):
+            sys.exit(f"pins.json: toolchain_licenses' {lib} must map each licence file to its sha256")
     return pins
 
 

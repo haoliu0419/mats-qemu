@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-only
-# Builds the pinned QEMU (pins.json) for macOS arm64, Windows x64 and
-# Linux x64, checks and smokes each archive (build/ci-build.sh), and
+# Runs the build scripts' tests, then builds the pinned QEMU (pins.json)
+# for macOS arm64, Windows x64 and Linux x64, checks and smokes each
+# archive (build/ci-build.sh), and
 # publishes the three archives, their SHA256SUMS and the sources bundle as
 # the release qemu-<version>-<n>. It runs only when dispatched. A build
 # number already released is refused: the app pins each archive's sha256,
@@ -47,9 +48,27 @@ jobs:
           fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
+  # The build scripts' own tests (build/tests): the drivers' boundaries,
+  # collect.py's checks and unpack.py's paths, with every compiler, download
+  # and toolchain answered by the tests. They run first, so a failing one
+  # spends no macOS or Windows minutes.
+  tests:
+    name: build scripts' tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5 # 2x the slowest green run
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Unit tests
+        run: python3 -m unittest discover -s build/tests -v
+
   build:
     name: ${{ matrix.platform }}
-    needs: check
+    needs: [check, tests]
     strategy:
       fail-fast: false
       matrix:
