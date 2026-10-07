@@ -5,8 +5,10 @@
 # glib takes libintl from proxy-libintl, built as its subproject from the
 # pinned tarball placed in its package cache; on Linux it takes glibc's.
 # Meson never downloads (--wrap-mode=nodownload), so a dependency missing
-# from the prefix fails the build instead of arriving from elsewhere.
+# from the prefix fails the build instead of arriving from elsewhere. The
+# flags it builds with are written to $WORK/build-flags-libs.txt.
 source "$(dirname "$0")/common.sh"
+record_flags libs
 
 SRC="$WORK/src"
 BLD="$WORK/build"

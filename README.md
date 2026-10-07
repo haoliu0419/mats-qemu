@@ -89,8 +89,10 @@ it publishes one (GitHub releases), then its own site or a second mirror.
   (`-static-libgcc`) and QEMU's stack protector is off, since it would load
   MSYS2's `libssp` DLL; macOS and Linux keep the stack protector.
   `collect.py` refuses any other MSYS2 runtime DLL, naming every file that
-  imports one, and any flag that loads a GCC plugin, and records GCC's
-  version and the MSYS2 package that installed its runtime library. Meson is
+  imports one, and any flag that loads a GCC plugin (each build script
+  records the flags it built with, `record_flags` in `common.sh`), and
+  records GCC's version and the MSYS2 package that installed its runtime
+  library. Meson is
   pinned in `pins.json` (QEMU uses the one its tarball carries). The
   manifest records every tool's version.
 - **macOS 12.0** is the oldest macOS the archive runs on (`macos_minimum` in

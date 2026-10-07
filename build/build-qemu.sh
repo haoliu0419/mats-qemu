@@ -10,8 +10,10 @@
 # which the arm target needs. The mps2-an521 machine and the serial
 # backends the app uses (socket and file) are core and stay; smoke.sh
 # checks both. The configure line is written to $WORK/configure-line.txt
-# for the manifest.
+# for the manifest, and the flags it builds with to
+# $WORK/build-flags-qemu.txt.
 source "$(dirname "$0")/common.sh"
+record_flags qemu
 
 SRC="$WORK/src/qemu"
 BLD="$WORK/build/qemu"

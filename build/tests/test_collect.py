@@ -142,6 +142,62 @@ class PluginTests(unittest.TestCase):
                                   "configure": "configure --target-list=arm-softmmu --prefix=<prefix>"})
 
 
+class RunTests(unittest.TestCase):
+    """A command that fails names itself with its exit code and its stderr,
+    so a failure on a runner shows its cause in the log."""
+
+    def test_a_failing_command_carries_its_exit_code_and_stderr(self):
+        with self.assertRaises(SystemExit) as ctx:
+            collect.run(sys.executable, "-c", "import sys; sys.stderr.write('the cause'); sys.exit(3)")
+        self.assertIn("exited 3: the cause", str(ctx.exception))
+
+    def test_a_command_that_is_not_there_says_so(self):
+        with self.assertRaises(SystemExit) as ctx:
+            collect.run("mats-qemu-no-such-tool")
+        self.assertIn("mats-qemu-no-such-tool was not found", str(ctx.exception))
+
+    def test_pacmans_reader_carries_the_cause_too(self):
+        import msys2_db
+        with self.assertRaises(SystemExit) as ctx:
+            msys2_db.default_run(sys.executable, "-c", "import sys; sys.stderr.write('no package'); sys.exit(1)")
+        self.assertIn("exited 1: no package", str(ctx.exception))
+
+
+class BuildFlagsTests(unittest.TestCase):
+    """The Windows build's flags are what build-libs.sh and build-qemu.sh
+    recorded as they built (common.sh record_flags): no shell is started to
+    work them out again."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory(prefix="mats-qemu-flags-")
+        self.addCleanup(tmp.cleanup)
+        self.work = Path(tmp.name)
+
+    def record(self, name, ldflags="-static-libgcc"):
+        (self.work / f"build-flags-{name}.txt").write_text(f"CFLAGS=\nCXXFLAGS=\nLDFLAGS={ldflags}\n", encoding="utf-8")
+
+    def test_the_flags_each_build_recorded_are_read(self):
+        self.record("libs")
+        self.record("qemu")
+        self.assertEqual(collect.windows_build_flags(str(self.work)), {
+            "build-libs CFLAGS": "", "build-libs CXXFLAGS": "", "build-libs LDFLAGS": "-static-libgcc",
+            "build-qemu CFLAGS": "", "build-qemu CXXFLAGS": "", "build-qemu LDFLAGS": "-static-libgcc",
+        })
+
+    def test_a_build_that_recorded_nothing_fails_naming_its_record(self):
+        self.record("libs")
+        with self.assertRaises(SystemExit) as ctx:
+            collect.windows_build_flags(str(self.work))
+        self.assertIn("build-flags-qemu.txt is missing", str(ctx.exception))
+
+    def test_a_plugin_a_build_ran_with_fails_naming_the_build(self):
+        self.record("libs", "-static-libgcc -fplugin=./annobin.so")
+        self.record("qemu")
+        with self.assertRaises(SystemExit) as ctx:
+            collect.check_no_plugins(collect.windows_build_flags(str(self.work)))
+        self.assertIn("build-libs LDFLAGS: -fplugin=./annobin.so", str(ctx.exception))
+
+
 class ArchiveTests(unittest.TestCase):
     def setUp(self):
         tmp = tempfile.TemporaryDirectory(prefix="mats-qemu-archive-")

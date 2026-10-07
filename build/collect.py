@@ -60,7 +60,15 @@ LINUX_SYSTEM = {
 
 
 def run(*args):
-    return subprocess.run(args, check=True, capture_output=True, text=True).stdout
+    """`args`' standard output. A command that cannot start, or exits other
+    than 0, fails the stage naming it with its exit code and its standard
+    error, so the cause is in the log."""
+    try:
+        return subprocess.run(args, check=True, capture_output=True, text=True).stdout
+    except FileNotFoundError:
+        fail(f"{args[0]} was not found")
+    except subprocess.CalledProcessError as e:
+        fail(f"{' '.join(str(a) for a in args)} exited {e.returncode}: {(e.stderr or '').strip() or 'nothing on stderr'}")
 
 
 def sha256_of(path):
@@ -207,14 +215,24 @@ def check_architecture(stage, files, platform, run_cmd=None):
     return ARCHITECTURES[platform]
 
 
-def windows_build_flags(run_cmd=None):
-    """The compiler and linker flags the Windows build used: those common.sh
-    sets for every build script, read by sourcing it as they do under the
-    environment this inherits."""
-    run_cmd = run_cmd or run
-    script = 'source "$1" "$2" >/dev/null && printf "%s\\n" "${CFLAGS-}" "${CXXFLAGS-}" "${LDFLAGS-}"'
-    lines = run_cmd("bash", "-c", script, "flags", os.path.join(ROOT, "build", "common.sh"), "windows-x64").splitlines()
-    return dict(zip(("CFLAGS", "CXXFLAGS", "LDFLAGS"), (line.strip() for line in lines)))
+def windows_build_flags(work):
+    """The compiler and linker flags the Windows build ran with, as
+    build-libs.sh and build-qemu.sh recorded them under `work`
+    (common.sh record_flags), by where: {"build-libs CFLAGS": ..., ...}. A
+    record that is missing fails the stage by name."""
+    flags = {}
+    for name in ("libs", "qemu"):
+        path = os.path.join(work, f"build-flags-{name}.txt")
+        try:
+            with open(path, encoding="utf-8") as f:
+                lines = f.read().splitlines()
+        except FileNotFoundError:
+            fail(f"{path} is missing: build-{name}.sh records the flags it builds with there")
+        for line in lines:
+            key, sep, value = line.partition("=")
+            if sep:
+                flags[f"build-{name} {key}"] = value
+    return flags
 
 
 def check_no_plugins(flags):
@@ -529,7 +547,7 @@ def main(argv):
     licenses(stage, plat)
     toolchain = {}
     if platform == "windows-x64":
-        check_no_plugins({**windows_build_flags(), "configure": configure})
+        check_no_plugins({**windows_build_flags(WORK), "configure": configure})
         toolchain = windows_toolchain_libraries(stage)
     write_notice(stage, plat, version, build_number, toolchain)
     manifest = {

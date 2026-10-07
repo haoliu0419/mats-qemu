@@ -9,10 +9,18 @@ import gzip
 import hashlib
 import os
 import subprocess
+import sys
 
 
 def default_run(*args):
-    return subprocess.run(list(args), check=True, capture_output=True, text=True).stdout
+    """`args`' standard output; one that cannot start, or exits other than
+    0, ends the script naming it with its exit code and standard error."""
+    try:
+        return subprocess.run(list(args), check=True, capture_output=True, text=True).stdout
+    except FileNotFoundError:
+        sys.exit(f"msys2_db: {args[0]} was not found")
+    except subprocess.CalledProcessError as e:
+        sys.exit(f"msys2_db: {' '.join(str(a) for a in args)} exited {e.returncode}: {(e.stderr or '').strip() or 'nothing on stderr'}")
 
 
 def native(posix, run=default_run):

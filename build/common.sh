@@ -8,7 +8,7 @@
 #   NATIVE_PREFIX  PREFIX as the native tools spell it (a Windows path
 #            with forward slashes under MSYS2, PREFIX elsewhere);
 #   JOBS     the parallel job count.
-# and `pin`, which runs build/pins.py.
+# and `pin`, which runs build/pins.py, and `record_flags`.
 set -euo pipefail
 
 PLATFORM="${1:-}"
@@ -30,6 +30,15 @@ JOBS="$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)"
 
 # Any \r a Windows Python writes is dropped (pins.py writes none itself).
 pin() { python3 "$ROOT/build/pins.py" "$@" | tr -d '\r'; }
+
+# Writes the compiler and linker flags a build script runs with to
+# $WORK/build-flags-<name>.txt, one NAME=value per line: what collect.py
+# checks for a GCC plugin on Windows, read from the build that used them
+# rather than worked out again. Called by each script once this file has
+# set them (below).
+record_flags() {
+    printf 'CFLAGS=%s\nCXXFLAGS=%s\nLDFLAGS=%s\n' "${CFLAGS-}" "${CXXFLAGS-}" "${LDFLAGS-}" > "$WORK/build-flags-$1.txt"
+}
 
 # pkg-config sees the prefix alone: a library found anywhere else (Homebrew
 # on the macOS runner, MSYS2's packages on Windows) would ship binaries
