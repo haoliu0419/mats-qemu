@@ -383,7 +383,8 @@ def tool_versions(platform):
 
 def main(argv):
     global PINS, WORK
-    if len(argv) != 3 or not argv[2].isdigit():
+    if (len(argv) != 3 or argv[1] not in ("macos-arm64", "windows-x64", "linux-x64")
+            or not re.fullmatch(r"[1-9][0-9]*", argv[2])):
         sys.exit(__doc__)
     platform, build_number = argv[1], argv[2]
     PINS = pins_mod.load()

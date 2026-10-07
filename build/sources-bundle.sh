@@ -15,7 +15,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 N="${1:-}"
-case "$N" in ''|*[!0-9]*) echo "usage: $0 <build number>" >&2; exit 2 ;; esac
+case "$N" in ''|0*|*[!0-9]*) echo "usage: $0 <positive build number without leading zeroes>" >&2; exit 2 ;; esac
 # Any \r a Windows Python writes is dropped (pins.py writes none itself).
 pin() { python3 "$ROOT/build/pins.py" "$@" | tr -d '\r'; }
 

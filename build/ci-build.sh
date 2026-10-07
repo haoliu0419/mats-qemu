@@ -18,13 +18,21 @@ set -euo pipefail
 
 PLATFORM="${1:-}"
 N="${2:-}"
-case "$N" in ''|*[!0-9]*) echo "usage: $0 <platform> <build number>" >&2; exit 2 ;; esac
+case "$PLATFORM" in
+    macos-arm64|windows-x64|linux-x64) ;;
+    *) echo "usage: $0 macos-arm64|windows-x64|linux-x64 <build number>" >&2; exit 2 ;;
+esac
+case "$N" in ''|0*|*[!0-9]*) echo "usage: $0 <platform> <positive build number without leading zeroes>" >&2; exit 2 ;; esac
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PY="${PYTHON:-python3}"
 # Any \r a Windows Python writes is dropped (pins.py writes none itself).
 pin() { "$PY" "$ROOT/build/pins.py" "$@" | tr -d '\r'; }
 WORK="${MATS_QEMU_WORK:-$ROOT/work/$PLATFORM}"
 mkdir -p "$WORK"
+# Installation does not remove files a new recipe stops producing. Every
+# run owns a fresh prefix; only the checked tarballs in sources/ are reused.
+rm -rf "$WORK/prefix"
+mkdir -p "$WORK/prefix"
 
 TOOLS="$WORK/tools"
 rm -rf "$TOOLS"
@@ -49,7 +57,8 @@ bash "$ROOT/build/build-qemu.sh" "$PLATFORM"
 # it; MSYS2's own python3 has none.
 collected="$("$PYTHON" "$ROOT/build/collect.py" "$PLATFORM" "$N" | tr -d '\r')"
 archive="${collected%%$'\n'*}"
-archive="${archive%% *}"
+# The final token is the sha256; the archive path itself may contain spaces.
+archive="${archive% *}"
 # collect.py prints native paths; MSYS2's tools take POSIX ones.
 if [ "$PLATFORM" = windows-x64 ]; then archive="$(cygpath -u "$archive")"; fi
 [ -n "$archive" ] && [ -f "$archive" ] || { echo "collect.py named no archive" >&2; exit 1; }

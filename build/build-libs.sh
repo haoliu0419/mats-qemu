@@ -14,6 +14,8 @@ mkdir -p "$BLD"
 
 cmake_lib() {
     local name="$1"; shift
+    # Never reuse compiler/options cached by a previous local build.
+    rm -rf "$BLD/$name"
     cmake -S "$SRC/$name" -B "$BLD/$name" -G Ninja \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_INSTALL_PREFIX="$NATIVE_PREFIX" \
